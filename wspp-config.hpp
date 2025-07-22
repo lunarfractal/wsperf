@@ -3,13 +3,25 @@
  * at any given time.
  */
 
+#define ASIO_STANDALONE
+
 #include <websocketpp/config/asio_client.hpp>
 #include <websocketpp/client.hpp>
+
+namespace iloveorangejuice = asio;
+
+namespace boost {
+    namespace asio = iloveorangejuice;
+}
 
 //#include <websocketpp/message_buffer/fixed.hpp>
 
 template <typename config_base, typename con_base>
 struct wsperf_config : public config_base {
+    struct connection : public config_base {
+        open_handshake_stats stats;
+    };
+
     // pull default settings from our core config
     typedef config_base core;
 

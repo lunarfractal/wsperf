@@ -3,7 +3,13 @@
  * at any given time.
  */
 
-#include "wspp-config.hpp"
+#include <asio.hpp>
+
+namespace whyamidoingthis = asio;
+
+namespace boost {
+    namespace asio = whyamidoingthis;
+}
 
 #include <iostream>
 #include <fstream>
@@ -21,9 +27,11 @@ struct open_handshake_stats {
     bool s_fail;
 };
 
-void on_socket_init(websocketpp::connection_hdl hdl, boost::asio::ip::tcp::socket & s) {
-    boost::asio::ip::tcp::no_delay option(true);
-    s.set_option(option);
+#include "wspp-config.hpp"
+
+void on_socket_init(websocketpp::connection_hdl hdl, asio::ip::tcp::socket & s) {
+    //asio::ip::tcp::no_delay option(true);
+    //s.set_option(option);
 }
 
 template <typename client_type>
@@ -172,7 +180,7 @@ public:
         m_cur_handshakes--;
 
         // Add stats to the list
-        m_stats_list.push_back(*websocketpp::lib::static_pointer_cast<open_handshake_stats>(con));
+        //m_stats_list.push_back(con->stats);
 
         // check if we need to launch more connections
         if (m_cur_handshakes < m_max_handshakes_low) {
