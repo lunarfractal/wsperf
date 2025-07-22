@@ -15,6 +15,7 @@ namespace boost {
 #include <fstream>
 #include <chrono>
 #include <mutex>
+#include <type_traits>
 
 struct open_handshake_stats {
     std::chrono::high_resolution_clock::time_point s_start;
@@ -34,6 +35,11 @@ void on_socket_init(websocketpp::connection_hdl hdl, asio::ip::tcp::socket & s) 
     //s.set_option(option);
 }
 
+
+typedef websocketpp::client<websocketpp::config::asio_tls_client> client_tls;
+typedef websocketpp::client<websocketpp::config::asio_client> client_no_tls;
+
+
 template <typename client_type>
 class handshake_test {
 public:
@@ -44,29 +50,31 @@ public:
 
     handshake_test () {
         // silence access/error messages
-        m_endpoint.set_access_channels(websocketpp::log::alevel::none);
-        m_endpoint.set_error_channels(websocketpp::log::elevel::none);
+        m_endpoint.set_access_channels(websocketpp::log::alevel::all ^ websocketpp::log::alevel::frame_header);
+        m_endpoint.set_error_channels(websocketpp::log::elevel::all);
 
         // Initialize ASIO
         m_endpoint.init_asio();
 
-        // Register our handlers
-        if (m_endpoint.is_secure()) {
-            //m_endpoint.set_tls_init_handler(bind(&type::on_tls_init,this,::_1));
+        if constexpr (std::is_same_v<client_type, client_tls>) {
+            m_endpoint.set_tls_init_handler([](websocketpp::connection_hdl) {
+                return websocketpp::lib::make_shared<asio::ssl::context>(asio::ssl::context::tlsv12_client);
+            });
         }
 
-        m_endpoint.set_socket_init_handler(bind(&on_socket_init,::_1,::_2));
+        //m_endpoint.set_socket_init_handler(bind(&on_socket_init,::_1,::_2));
 
-        m_endpoint.set_tcp_pre_init_handler(bind(&type::on_tcp_pre_init,this,::_1));
-        m_endpoint.set_tcp_post_init_handler(bind(&type::on_tcp_post_init,this,::_1));
+        //m_endpoint.set_tcp_pre_init_handler(bind(&type::on_tcp_pre_init,this,::_1));
+        //m_endpoint.set_tcp_post_init_handler(bind(&type::on_tcp_post_init,this,::_1));
         m_endpoint.set_open_handler(bind(&type::on_open,this,::_1));
         m_endpoint.set_fail_handler(bind(&type::on_fail,this,::_1));
         m_endpoint.set_close_handler(bind(&type::on_close,this,::_1));
     }
 
-    void start(std::string uri, size_t num_threads, size_t num_cons, size_t num_parallel_handshakes_low, size_t num_parallel_handshakes_high, std::string logfile) {
+    void start(std::string uri, std::string proxy, size_t num_threads, size_t num_cons, size_t num_parallel_handshakes_low, size_t num_parallel_handshakes_high, std::string logfile) {
         m_stats_list.reserve(num_cons);
         m_uri = uri;
+        m_proxy = proxy;
         m_logfile = logfile;
         m_connection_count = num_cons;
         m_max_handshakes_low = num_parallel_handshakes_low;
@@ -120,36 +128,25 @@ public:
         	m_endpoint.get_alog().write(websocketpp::log::alevel::app,ec.message());
         }
 
+        con->set_proxy(m_proxy);
+
         m_endpoint.connect(con);
-	    con->s_start = std::chrono::high_resolution_clock::now();
+	    //con->s_start = std::chrono::high_resolution_clock::now();
     }
 
     void on_tcp_pre_init(websocketpp::connection_hdl hdl) {
-        connection_ptr con = m_endpoint.get_con_from_hdl(hdl);
-        con->s_tcp_pre_init = std::chrono::high_resolution_clock::now();
+        //connection_ptr con = m_endpoint.get_con_from_hdl(hdl);
+        //con->s_tcp_pre_init = std::chrono::high_resolution_clock::now();
     }
     void on_tcp_post_init(websocketpp::connection_hdl hdl) {
-        connection_ptr con = m_endpoint.get_con_from_hdl(hdl);
-        con->s_tcp_post_init = std::chrono::high_resolution_clock::now();
-    }
-
-    context_ptr on_tls_init(websocketpp::connection_hdl hdl) {
-        context_ptr ctx(new boost::asio::ssl::context(boost::asio::ssl::context::tlsv1));
-
-        try {
-            ctx->set_options(boost::asio::ssl::context::default_workarounds |
-                             boost::asio::ssl::context::no_sslv2 |
-                             boost::asio::ssl::context::single_dh_use);
-        } catch (std::exception& e) {
-            std::cout << e.what() << std::endl;
-        }
-        return ctx;
+        //connection_ptr con = m_endpoint.get_con_from_hdl(hdl);
+        //con->s_tcp_post_init = std::chrono::high_resolution_clock::now();
     }
 
     void on_open(websocketpp::connection_hdl hdl) {
         connection_ptr con = m_endpoint.get_con_from_hdl(hdl);
-        con->s_open = std::chrono::high_resolution_clock::now();
-        con->s_fail = false;
+        //con->s_open = std::chrono::high_resolution_clock::now();
+        //con->s_fail = false;
 
         if (m_close_immediately) {
             con->close(websocketpp::close::status::going_away,"");
@@ -171,10 +168,10 @@ public:
     }
 
     void on_fail(websocketpp::connection_hdl hdl) {
-        connection_ptr con = m_endpoint.get_con_from_hdl(hdl);
-        con->s_open = std::chrono::high_resolution_clock::now();
-        con->s_close = con->s_open;
-        con->s_fail = true;
+        //connection_ptr con = m_endpoint.get_con_from_hdl(hdl);
+        //con->s_open = std::chrono::high_resolution_clock::now();
+        //con->s_close = con->s_open;
+        //con->s_fail = true;
 
         std::lock_guard<std::mutex> guard(m_stats_lock);
         m_cur_handshakes--;
@@ -196,14 +193,14 @@ public:
     }
 
     void on_close(websocketpp::connection_hdl hdl) {
-        connection_ptr con = m_endpoint.get_con_from_hdl(hdl);
-        con->s_close = std::chrono::high_resolution_clock::now();
+        //connection_ptr con = m_endpoint.get_con_from_hdl(hdl);
+        //con->s_close = std::chrono::high_resolution_clock::now();
 
         std::lock_guard<std::mutex> guard(m_stats_lock);
         m_cur_connections--;
 
         // Add stats to the list
-        m_stats_list.push_back(*websocketpp::lib::static_pointer_cast<open_handshake_stats>(con));
+        //m_stats_list.push_back(*websocketpp::lib::static_pointer_cast<open_handshake_stats>(con));
 
         // Check it we are done
         if (m_stats_list.size() == m_connection_count) {
@@ -247,6 +244,7 @@ private:
     client_type m_endpoint;
 
     std::string m_uri;
+    std::string m_proxy;
     std::string m_logfile;
     size_t m_connection_count;
     size_t m_max_handshakes_high;
@@ -270,26 +268,26 @@ private:
     std::vector<open_handshake_stats> m_stats_list;
 };
 
-typedef websocketpp::client<wsperf_config<websocketpp::config::asio_client, open_handshake_stats>> client_tls;
-
 int main(int argc, char* argv[]) {
     std::string logfile;
-	std::string uri;
+    std::string uri;
+    std::string proxy;
     size_t num_threads;
     size_t num_cons;
     size_t max_parallel_handshakes_low;
     size_t max_parallel_handshakes_high;
 
-	if (argc == 7) {
+	if (argc == 8) {
 	    uri = argv[1];
-	    num_threads = atoi(argv[2]);
-	    num_cons = atoi(argv[3]);
-	    max_parallel_handshakes_low = atoi(argv[4]);
-	    max_parallel_handshakes_high = atoi(argv[5]);
-        logfile = argv[6];
+            proxy = argv[2];
+	    num_threads = atoi(argv[3]);
+	    num_cons = atoi(argv[4]);
+	    max_parallel_handshakes_low = atoi(argv[5]);
+	    max_parallel_handshakes_high = atoi(argv[6]);
+        logfile = argv[7];
 	} else {
 	    std::cout << "Usage: wsperf serverurl num_threads num_connections max_parallel_handshakes_low max_parallel_handshakes_high" << std::endl;
-	    std::cout << "Example: wsperf ws://localhost:9002 4 50 25 50 result.json" << std::endl;
+	    std::cout << "Example: wsperf ws://localhost:9002 http://localhost:8087 4 50 25 50 result.json" << std::endl;
 	    return 1;
 	}
 
@@ -301,12 +299,12 @@ int main(int argc, char* argv[]) {
 
 	try {
         if (uri.substr(0,3) == "wss") {
-            //handshake_test<client_tls<open_handshake_stats>> endpoint;
-            //endpoint.start(uri);
-            std::cout << "wss not supported at the moment" << std::endl;
-        } else {
             handshake_test<client_tls> endpoint;
-            endpoint.start(uri,num_threads,num_cons,max_parallel_handshakes_low,max_parallel_handshakes_high,logfile);
+            endpoint.start(uri,proxy,num_threads,num_cons,max_parallel_handshakes_low,max_parallel_handshakes_high,logfile);
+            //std::cout << "wss not supported at the moment" << std::endl;
+        } else {
+            handshake_test<client_no_tls> endpoint;
+            endpoint.start(uri,proxy,num_threads,num_cons,max_parallel_handshakes_low,max_parallel_handshakes_high,logfile);
         }
     } catch (const std::exception & e) {
         std::cout << e.what() << std::endl;
